@@ -1,0 +1,103 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: almalead-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-almalead}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-almalead_password}
+      POSTGRES_DB: ${POSTGRES_DB:-almalead}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-almalead}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - almalead-network
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: almalead-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - almalead-network
+
+  # MailHog (Email testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: almalead-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - almalead-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: almalead-backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://almalead:almalead_password@postgres:5432/almalead}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-resumes}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@almalead.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-AlmaLead}
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production-min-32-chars}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-1440}
+      ATTORNEY_EMAIL: ${ATTORNEY_EMAIL:-attorney@company.com}
+      ATTORNEY_PASSWORD: ${ATTORNEY_PASSWORD:-SecurePassword123!}
+      ATTORNEY_FIRST_NAME: ${ATTORNEY_FIRST_NAME:-John}
+      ATTORNEY_LAST_NAME: ${ATTORNEY_LAST_NAME:-Attorney}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mailhog:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    networks:
+      - almalead-network
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  almalead-network:
+    driver: bridge
