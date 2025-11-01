@@ -61,7 +61,7 @@ A production-ready lead management API built with FastAPI, featuring complete Do
    - Backend (FastAPI) on http://localhost:8000
    - PostgreSQL database
    - MinIO object storage
-   - MailHog email server
+   - MailHog email server (UI at http://localhost:8025)
 
 4. **Wait for services to be ready** (~30-60 seconds)
    - Watch the logs for "Application startup complete"
